@@ -1,11 +1,18 @@
 //To do: Categorize data based on time (rush hour, etc.) and population density
 // Put into account if the road is a major or local roads, time frame of accident if daily or weekly (ie major road has 100 accident per month vs local road has 100 week)
 // Base on season, road condition, etc.
-// Spark or cloud to get data from instead of local text file
 
-var map, heatmap;
+var map, heatmap, origin, destination;
 
 function initMap() {
+var markerArray = [];
+
+ var directionsService = new google.maps.DirectionsService;
+  var directionsDisplay = new google.maps.DirectionsRenderer;
+  
+    // Instantiate an info window to hold step text.
+  var stepDisplay = new google.maps.InfoWindow;
+  
   var harvard = {lat: 42.3770, lng: -71.1167};
   map = new google.maps.Map(document.getElementById('map'), 
   {
@@ -13,53 +20,81 @@ function initMap() {
     center: harvard,
     mapTypeId: 'satellite'
   });
+
+ directionsDisplay.setMap(map);
+ 
+  var onChangeHandler = function() {
+    calculateAndDisplayRoute(directionsService, directionsDisplay,markerArray, stepDisplay, map);
+  };
   
-  var contentString = '<div id="content">'+
-      '<div id="siteNotice">'+
-      '</div>'+
-      '<h1 id="firstHeading" class="firstHeading">Harvard University</h1>'+
-      '<div id="bodyContent">'+
-      '<p><b>Harvard University</b>, is a private, Ivy League research university in Cambridge, Massachusetts,' +
-      'established 1636, whose history, influence, and wealth have made it one of the worlds most prestigious universities.</p>'+
-      '</div>'+
-      '</div>';
-
-var infowindow = new google.maps.InfoWindow({
-    content: contentString
-  });
-
-  var marker = new google.maps.Marker({
-    position: harvard,
-    map: map,
-    title: 'Harvard University'
-  });
+  document.getElementById('submit').addEventListener('click', onChangeHandler);
   
-    var directionsService = new google.maps.DirectionsService;
-  var directionsDisplay = new google.maps.DirectionsRenderer({
-    draggable: true,
-    map: map,
-    panel: document.getElementById('right-panel')
-  });
-
-  directionsDisplay.addListener('directions_changed', function() {
-    computeTotalDistance(directionsDisplay.getDirections());
-  });
-      
-  marker.addListener('click', function() {
-    infowindow.open(map, marker);
-  });
+  
+  var trafficLayer = new google.maps.TrafficLayer();
+  trafficLayer.setMap(map);
   
   heatmap = new google.maps.visualization.HeatmapLayer({
     data: getPoints(),
     map: map
   });
   
+  var trafficLayer = new google.maps.TrafficLayer();
+  trafficLayer.setMap(map);  
+  
+  var geocoder = new google.maps.Geocoder();
 
-displayRoute('Boston, MA','Cambridge, MA', directionsService, directionsDisplay);
+  
+}
 
+function calculateAndDisplayRoute(directionsService, directionsDisplay,markerArray, stepDisplay, map) {
+
+ // First, remove any existing markers from the map.
+  for (var i = 0; i < markerArray.length; i++) {
+    markerArray[i].setMap(null);
+  }
+  
+  directionsService.route({
+    origin: document.getElementById('address').value,
+    destination: document.getElementById('destination').value,
+    travelMode: 'DRIVING'
+  }, function(response, status) {
+    if (status === 'OK') {
+      directionsDisplay.setDirections(response);
+      showSteps(response, markerArray, stepDisplay, map);
+    } else {
+      window.alert('Directions request failed due to ' + status);
+    }
+  });
+}
+
+function showSteps(directionResult, markerArray, stepDisplay, map) {
+  // For each step, place a marker, and add the text to the marker's infowindow.
+  // Also attach the marker to an array so we can keep track of it and remove it
+  // when calculating new routes.
+  var myRoute = directionResult.routes[0].legs[0];
+  for (var i = 0; i < myRoute.steps.length; i++) {
+    var marker = markerArray[i] = markerArray[i] || new google.maps.Marker;
+    marker.setMap(map);
+    marker.setPosition(myRoute.steps[i].start_location);
+    attachInstructionText(
+        stepDisplay, marker, myRoute.steps[i].instructions, map);
+  }
+}
+
+function attachInstructionText(stepDisplay, marker, text, map) {
+  google.maps.event.addListener(marker, 'click', function() {
+    // Open an info window when the marker is clicked on, containing the text
+    // of the step.
+    stepDisplay.setContent(text);
+    stepDisplay.open(map, marker);
+  });
 }
 
 
+
+
+
+//Heat maps functions
 function toggleHeatmap() {
   heatmap.setMap(heatmap.getMap() ? null : map);
 }
@@ -90,32 +125,6 @@ function changeRadius() {
 
 function changeOpacity() {
   heatmap.set('opacity', heatmap.get('opacity') ? null : 0.2);
-}
-
-function displayRoute(origin, destination, service, display) {
-  service.route({
-    origin: origin,
-    destination: destination,
-    //waypoints: [{location: 'Adelaide, SA'}, {location: 'Broken Hill, NSW'}],
-    travelMode: 'DRIVING',
-    avoidTolls: true
-  }, function(response, status) {
-    if (status === 'OK') {
-      display.setDirections(response);
-    } else {
-      alert('Could not display directions due to: ' + status);
-    }
-  });
-}
-
-function computeTotalDistance(result) {
-  var total = 0;
-  var myroute = result.routes[0];
-  for (var i = 0; i < myroute.legs.length; i++) {
-    total += myroute.legs[i].distance.value;
-  }
-  total = total / 1000;
-  document.getElementById('total').innerHTML = total + ' km';
 }
 
 // Heatmap data: 500 Points
